@@ -9,7 +9,7 @@ except ImportError as e:
     raise error.DependencyNotInstalled("{}. (HINT: you can install dependencies with 'pip install')".format(e))
 
 REQUEST_TIMEOUT = 2500
-SERVER_ENDPOINT = "tcp://localhost:5558"
+SERVER_ENDPOINT = "tcp://127.0.0.1:5558"
 
 class ZmqEnv(gym.Env):
     metadata = {'render.modes': ['human']}
@@ -25,6 +25,7 @@ class ZmqEnv(gym.Env):
         self.poll = zmq.Poller()
         self._connect_server()
 
+        # TODO get these from zmq-server
         self.action_space = self._action_space()
         self.observation_space = self._observation_space()
 
@@ -54,7 +55,8 @@ class ZmqEnv(gym.Env):
 
         Returns: observation (object): the initial observation of the episode
         """
-        return self._request("reset")[0]
+        action = np.zeros(self.action_space.shape)
+        return self._request(action)[0]
 
     def render(self, mode='human', close=False):
         """ These are live environments, so the agent doesn't get to control their rendering """
@@ -71,19 +73,15 @@ class ZmqEnv(gym.Env):
 
 
     def _action_space(self):
-        # TODO get this from zmq-server
         # return spaces.Discrete(21)
-        # low = [-1.0, -1.0, -1.0]
+        # low = [0.0, 0.0, 0.0]
         # high = [1.0, 1.0, 1.0]
         # return spaces.Box(np.array(low), np.array(high), dtype=np.float32)
-        return spaces.Box(low=-1.0, high=1.0, shape=(3,), dtype=np.float32)
+        return spaces.Box(low=0.0, high=1.0, shape=(3,), dtype=np.float32)
 
     def _observation_space(self):
-        # TODO get this from zmq-server
-        # hit points, cooldown, ground range, is enemy, degree, distance (myself)
-        # hit points, cooldown, ground range, is enemy (enemy)
-        low = [0.0, 0.0, 0.0, 0.0, -1.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-        high = [100.0, 100.0, 1.0, 1.0, 1.0, 50.0, 100.0, 100.0, 1.0, 1.0]
+        low = [-1.0, -1.0, -1.0, -1.0]
+        high = [1.0, 1.0, 1.0, 1.0]
         return spaces.Box(np.array(low), np.array(high), dtype=np.float32)
 
     def _connect_server(self):
@@ -98,22 +96,28 @@ class ZmqEnv(gym.Env):
         reward = 0.0
         done = True
         info = {}
-
-        socks = dict(self.poll.poll(REQUEST_TIMEOUT))
-        print("I: Client??? (%s)" % socks.get(self.client))
         
-        request = str(action).encode()
+        request = " ".join(map(str, action))
+        request = str(request).encode()
         print("I: Sending (%s)" % request)
         self.client.send(request)
+
+        # socks = dict(self.poll.poll(REQUEST_TIMEOUT))
+        # print("I: Client??? (%s)" % socks.get(self.client))
 
         socks = dict(self.poll.poll(REQUEST_TIMEOUT))
         if socks.get(self.client) == zmq.POLLIN:
             reply = self.client.recv()
             if reply:
-                print("I: Server replied OK (%s)" % reply)
-                observation[0] = 0.25
-                reward = 0.1
-                done = False
+                replyDecode = list(map(np.float32,reply.split()))
+                print("I: Server replied [%s] [%s]" % (reply, replyDecode))
+                observation[0] = replyDecode[0]
+                observation[1] = replyDecode[1]
+                observation[2] = replyDecode[2]
+                observation[3] = replyDecode[3]
+                reward = replyDecode[4]
+                done = (replyDecode[5] == 1)
+                info = {}
         else:
             print("W: No response from server")
             # Socket is confused. Close and remove it.
