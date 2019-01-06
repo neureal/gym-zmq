@@ -55,8 +55,7 @@ class ZmqEnv(gym.Env):
 
         Returns: observation (object): the initial observation of the episode
         """
-        action = np.zeros(self.action_space.shape)
-        return self._request(action)[0]
+        return self._request(None)[0]
 
     def render(self, mode='human', close=False):
         """ These are live environments, so the agent doesn't get to control their rendering """
@@ -73,16 +72,17 @@ class ZmqEnv(gym.Env):
 
 
     def _action_space(self):
-        # return spaces.Discrete(21)
+        return spaces.Discrete(18)
         # low = [0.0, 0.0, 0.0]
         # high = [1.0, 1.0, 1.0]
         # return spaces.Box(np.array(low), np.array(high), dtype=np.float32)
-        return spaces.Box(low=0.0, high=1.0, shape=(3,), dtype=np.float32)
+        # return spaces.Box(low=0.0, high=1.0, shape=(3,), dtype=np.float32)
 
     def _observation_space(self):
-        low = [-1.0, -1.0, -1.0, -1.0]
-        high = [1.0, 1.0, 1.0, 1.0]
-        return spaces.Box(np.array(low), np.array(high), dtype=np.float32)
+        # low = [-1.0, -1.0, -1.0, -1.0]
+        # high = [1.0, 1.0, 1.0, 1.0]
+        # return spaces.Box(np.array(low), np.array(high), dtype=np.float32)
+        return spaces.Box(low=0, high=255, shape=(4,4,3), dtype=np.uint8)
 
     def _connect_server(self):
         print("I: Connecting to server...")
@@ -92,37 +92,43 @@ class ZmqEnv(gym.Env):
 
 
     def _request(self, action):
-        observation = np.zeros(self.observation_space.shape)
+        observation = np.zeros(shape=self.observation_space.shape, dtype=self.observation_space.dtype)
         reward = 0.0
         done = True
         info = {}
         
-        request = " ".join(map(str, action))
+        # print("I: action (%s)" % action)
+        request = "reset"
+        if (action is not None):
+            action = np.asarray(action)
+            if (action.ndim == 0):
+                request = action
+            elif (action.ndim == 1):
+                request = " ".join(map(str, action))
         request = str(request).encode()
-        print("I: Sending (%s)" % request)
+        # print("I: Sending (%s)" % request)
+
         self.client.send(request)
 
-        # socks = dict(self.poll.poll(REQUEST_TIMEOUT))
-        # print("I: Client??? (%s)" % socks.get(self.client))
-
         socks = dict(self.poll.poll(REQUEST_TIMEOUT))
+        # print("I: Client??? (%s)" % socks.get(self.client))
         if socks.get(self.client) == zmq.POLLIN:
             reply = self.client.recv()
             if reply:
-                replyDecode = list(map(np.float32,reply.split()))
-                print("I: Server replied [%s] [%s]" % (reply, replyDecode))
-                observation[0] = replyDecode[0]
-                observation[1] = replyDecode[1]
-                observation[2] = replyDecode[2]
-                observation[3] = replyDecode[3]
-                reward = replyDecode[4]
-                done = (replyDecode[5] == 1)
-                info = {}
+                # print("I: Server replied (%s)" % (reply))
+                reply_list = reply.split()
+                done = (np.float32(reply_list[0]) == 1)
+                reward = np.float32(reply_list[1])
+
+                observation = np.fromiter(map(np.uint8,reply_list[2:]), np.uint8)
+                observation.resize(self.observation_space.shape)
+                # info = {}
         else:
             print("W: No response from server")
             # Socket is confused. Close and remove it.
-            # self.client.setsockopt(zmq.LINGER, 0)
-            # self.client.close()
-            # self.poll.unregister(self.client)
+            self.client.setsockopt(zmq.LINGER, 0)
+            self.client.close()
+            self.poll.unregister(self.client)
+            self._connect_server()
 
         return observation, reward, done, info
