@@ -65,9 +65,9 @@ class ZmqEnv(gym.Env):
         # if close:
         # else:
 
-    def close(self):
-        """Override close in your subclass to perform any necessary cleanup."""
-        self._disconnect_server()
+    # def close(self):
+    #     """Override close in your subclass to perform any necessary cleanup."""
+    #     self._disconnect_server()
 
     # def seed(self, seed):
     #     random.seed(seed)
