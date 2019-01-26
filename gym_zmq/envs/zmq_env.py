@@ -11,6 +11,8 @@ except ImportError as e:
 REQUEST_TIMEOUT = 2500
 SERVER_ENDPOINT = "tcp://127.0.0.1:5558"
 
+context = zmq.Context(1)
+
 class ZmqEnv(gym.Env):
     metadata = {'render.modes': ['human']}
 
@@ -21,7 +23,7 @@ class ZmqEnv(gym.Env):
         reward_range: A tuple corresponding to the min and max possible rewards
         Note: a default reward range set to [-inf,+inf] already exists. Set it if you want a narrower range.
         """
-        self.context = zmq.Context(1)
+        # self.context = zmq.Context(1)
         self.poll = zmq.Poller()
         self._connect_server()
 
@@ -30,7 +32,7 @@ class ZmqEnv(gym.Env):
         self.observation_space = self._observation_space()
 
     def __del__(self):
-        self.context.term()
+        self._disconnect_server()
 
     def step(self, action):
         """
@@ -63,8 +65,9 @@ class ZmqEnv(gym.Env):
         # if close:
         # else:
 
-    # def close(self):
-    #     """Override close in your subclass to perform any necessary cleanup."""
+    def close(self):
+        """Override close in your subclass to perform any necessary cleanup."""
+        self._disconnect_server()
 
     # def seed(self, seed):
     #     random.seed(seed)
@@ -85,10 +88,16 @@ class ZmqEnv(gym.Env):
         return spaces.Box(low=0, high=255, shape=(4,4,3), dtype=np.uint8)
 
     def _connect_server(self):
-        print("I: Connecting to server...")
-        self.client = self.context.socket(zmq.REQ)
+        print("zmq_env: Connecting to server...")
+        self.client = context.socket(zmq.REQ)
         self.client.connect(SERVER_ENDPOINT)
         self.poll.register(self.client, zmq.POLLIN)
+
+    def _disconnect_server(self):
+        print("zmq_env: Disconnecting from server...")
+        self.client.setsockopt(zmq.LINGER, 0)
+        self.client.close()
+        self.poll.unregister(self.client)
 
 
     def _request(self, action):
@@ -97,7 +106,7 @@ class ZmqEnv(gym.Env):
         done = True
         info = {}
         
-        # print("I: action (%s)" % action)
+        # print("zmq_env: action (%s)" % action)
         request = "reset"
         if (action is not None):
             action = np.asarray(action)
@@ -106,12 +115,12 @@ class ZmqEnv(gym.Env):
             elif (action.ndim == 1):
                 request = " ".join(map(str, action))
         request = str(request).encode()
-        # print("I: Sending (%s)" % request)
+        # print("zmq_env: Sending (%s)" % request)
 
         self.client.send(request)
 
         socks = dict(self.poll.poll(REQUEST_TIMEOUT))
-        # print("I: Client??? (%s)" % socks.get(self.client))
+        # print("zmq_env: Client??? (%s)" % socks.get(self.client))
         if socks.get(self.client) == zmq.POLLIN:
             reply = self.client.recv()
             if reply:
@@ -126,9 +135,7 @@ class ZmqEnv(gym.Env):
         else:
             print("W: No response from server")
             # Socket is confused. Close and remove it.
-            self.client.setsockopt(zmq.LINGER, 0)
-            self.client.close()
-            self.poll.unregister(self.client)
+            self._disconnect_server()
             self._connect_server()
 
         return observation, reward, done, info
