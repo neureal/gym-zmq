@@ -7,12 +7,12 @@ Supports messaging connections to live environments
 
 # Installation
 
-Install the [OpenAI gym](https://gym.openai.com/docs/).
+Install [OpenAI gym](https://gym.openai.com/docs/).
 
 Then install this package via
 
 ```bash
-git clone https://github.com/wilbown/gym-zmq.git
+git clone https://github.com/neureal/gym-zmq.git
 cd gym-zmq
 pip install -e .
 ```
