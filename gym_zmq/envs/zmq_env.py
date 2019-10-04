@@ -1,21 +1,17 @@
 import gym
-from gym import error, spaces, utils
-from gym.utils import seeding
 import numpy as np
 
 try:
     import zmq
 except ImportError as e:
-    raise error.DependencyNotInstalled("{}. (HINT: you can install dependencies with 'pip install')".format(e))
-
-REQUEST_TIMEOUT = 2500
-SERVER_ENDPOINT = "tcp://127.0.0.1:5558"
+    raise gym.error.DependencyNotInstalled("{}. (HINT: you can install dependencies with 'pip install')".format(e))
 
 context = zmq.Context(1)
 
 class ZmqEnv(gym.Env):
     metadata = {'render.modes': ['human']}
 
+    # TODO make this work with multiple threaded agents
     def __init__(self):
         """
         action_space: The Space object corresponding to valid actions
@@ -23,7 +19,11 @@ class ZmqEnv(gym.Env):
         reward_range: A tuple corresponding to the min and max possible rewards
         Note: a default reward range set to [-inf,+inf] already exists. Set it if you want a narrower range.
         """
-        # self.context = zmq.Context(1)
+
+		self.REQUEST_TIMEOUT = 2500
+		self.SERVER_ENDPOINT = "tcp://127.0.0.1:5558"
+
+        # self.context = zmq.Context(1) # breaks threading, zmq.Context needs to be one instance and global
         self.poll = zmq.Poller()
         self._connect_server()
 
@@ -40,11 +40,9 @@ class ZmqEnv(gym.Env):
 
         Args:
             action (object): an action provided by the agent
-            
         Returns:
             observation (object): agent's observation of the current environment
             reward (float) : amount of reward returned after previous action
-            TODO set this when zmq-server disconnects, or if done recieved from zmq-server
             done (boolean): whether the environment wants to end the agent's eposode, in which case further step() calls will return undefined results
             info (dict): contains auxiliary diagnostic information (helpful for debugging, and sometimes learning)
         """
@@ -90,7 +88,7 @@ class ZmqEnv(gym.Env):
     def _connect_server(self):
         print("zmq_env: Connecting to server...")
         self.client = context.socket(zmq.REQ)
-        self.client.connect(SERVER_ENDPOINT)
+        self.client.connect(self.SERVER_ENDPOINT)
         self.poll.register(self.client, zmq.POLLIN)
 
     def _disconnect_server(self):
@@ -102,11 +100,11 @@ class ZmqEnv(gym.Env):
 
     def _request(self, action):
         observation = np.zeros(shape=self.observation_space.shape, dtype=self.observation_space.dtype)
-        reward = 0.0
+        reward = np.float32(0.0)
         done = True
         info = {}
         
-        # print("zmq_env: action (%s)" % action)
+        # print("zmq_env: action {}".format(action))
         request = "reset"
         if (action is not None):
             action = np.asarray(action)
@@ -115,16 +113,16 @@ class ZmqEnv(gym.Env):
             elif (action.ndim == 1):
                 request = " ".join(map(str, action))
         request = str(request).encode()
-        # print("zmq_env: Sending (%s)" % request)
+        # print("zmq_env: Sending {}".format(request))
 
         self.client.send(request)
 
-        socks = dict(self.poll.poll(REQUEST_TIMEOUT))
-        # print("zmq_env: Client??? (%s)" % socks.get(self.client))
+        socks = dict(self.poll.poll(self.REQUEST_TIMEOUT))
+        # print("zmq_env: connected??? {}".format(socks.get(self.client)))
         if socks.get(self.client) == zmq.POLLIN:
             reply = self.client.recv()
             if reply:
-                # print("I: Server replied (%s)" % (reply))
+                # print("zmq_env: Server replied {}".format(reply))
                 reply_list = reply.split()
                 done = (np.float32(reply_list[0]) == 1)
                 reward = np.float32(reply_list[1])
@@ -133,7 +131,7 @@ class ZmqEnv(gym.Env):
                 observation.resize(self.observation_space.shape)
                 # info = {}
         else:
-            print("W: No response from server")
+            print("zmq_env: No response from server")
             # Socket is confused. Close and remove it.
             self._disconnect_server()
             self._connect_server()
