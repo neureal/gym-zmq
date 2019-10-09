@@ -20,8 +20,8 @@ class ZmqEnv(gym.Env):
         Note: a default reward range set to [-inf,+inf] already exists. Set it if you want a narrower range.
         """
 
-		self.REQUEST_TIMEOUT = 2500
-		self.SERVER_ENDPOINT = "tcp://127.0.0.1:5558"
+        self.REQUEST_TIMEOUT = 2500
+        self.SERVER_ENDPOINT = "tcp://127.0.0.1:5558"
 
         # self.context = zmq.Context(1) # breaks threading, zmq.Context needs to be one instance and global
         self.poll = zmq.Poller()
@@ -73,17 +73,17 @@ class ZmqEnv(gym.Env):
 
 
     def _action_space(self):
-        return spaces.Discrete(18)
+        return gym.spaces.Discrete(32)
         # low = [0.0, 0.0, 0.0]
         # high = [1.0, 1.0, 1.0]
-        # return spaces.Box(np.array(low), np.array(high), dtype=np.float32)
-        # return spaces.Box(low=0.0, high=1.0, shape=(3,), dtype=np.float32)
+        # return gym.spaces.Box(np.array(low), np.array(high), dtype=np.float32)
+        # return gym.spaces.Box(low=0.0, high=1.0, shape=(3,), dtype=np.float32)
 
     def _observation_space(self):
         # low = [-1.0, -1.0, -1.0, -1.0]
         # high = [1.0, 1.0, 1.0, 1.0]
-        # return spaces.Box(np.array(low), np.array(high), dtype=np.float32)
-        return spaces.Box(low=0, high=255, shape=(4,4,3), dtype=np.uint8)
+        # return gym.spaces.Box(np.array(low), np.array(high), dtype=np.float32)
+        return gym.spaces.Box(low=0, high=255, shape=(4,4,3), dtype=np.uint8)
 
     def _connect_server(self):
         print("zmq_env: Connecting to server...")
@@ -136,4 +136,6 @@ class ZmqEnv(gym.Env):
             self._disconnect_server()
             self._connect_server()
 
+        # print("zmq_env: observation {}".format(observation))
+        # print("zmq_env: reward {}".format(reward))
         return observation, reward, done, info
